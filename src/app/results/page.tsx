@@ -1,9 +1,9 @@
-import YouTubeUploadUI from "./components/YtUpload";
+import ClipsResultsUI from "../components/ClipResults";
 
-export default function UploadPage() {
+export default function ResultsPage() {
   return (
     <main>
-      <YouTubeUploadUI />
+      <ClipsResultsUI />
     </main>
   );
 }
