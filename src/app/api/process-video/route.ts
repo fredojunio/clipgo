@@ -1,36 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
-
-interface ProcessVideoRequest {
-  url: string;
-}
+import { processYouTubeVideo } from "@/app/lib/complete-pipeline";
 
 export async function POST(request: NextRequest) {
   try {
-    const { url }: ProcessVideoRequest = await request.json();
+    const { url } = await request.json();
 
     if (!url) {
       return NextResponse.json(
-        { success: false, message: "URL is required" },
+        { success: false, message: "YouTube URL is required" },
         { status: 400 }
       );
     }
 
-    // Your video processing logic here
-    console.log("Processing video:", url);
+    // Generate unique job ID
+    const jobId = `job-${Date.now()}`;
 
-    // Simulate processing
-    const jobId = "job-" + Date.now();
+    console.log(`Starting job ${jobId} for URL: ${url}`);
+
+    // Process the video (this will take several minutes)
+    const clips = await processYouTubeVideo(url, jobId);
 
     return NextResponse.json({
       success: true,
-      message: "Video queued for processing successfully!",
+      message: "Video processed successfully!",
       jobId,
+      clips,
     });
-  } catch (error) {
-    console.error("Error processing video:", error);
+  } catch (error: any) {
+    console.error("Processing error:", error);
     return NextResponse.json(
-      { success: false, message: "Failed to process video. Please try again." },
+      {
+        success: false,
+        message: error.message || "Failed to process video",
+      },
       { status: 500 }
     );
   }
 }
+
+// Optional: Add timeout configuration for long-running processes
+// export const maxDuration = 300; // 5 minutes (Vercel Pro required)

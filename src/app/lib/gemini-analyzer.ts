@@ -1,24 +1,28 @@
-// lib/gemini-analyzer.ts
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
 
-export async function analyzeVideoForClips(youtubeUrl: string) {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+interface ClipTimestamp {
+  start: number;
+  end: number;
+  duration: number;
+  title: string;
+  reason: string;
+  viralScore: number;
+}
+
+export async function analyzeVideoForClips(
+  youtubeUrl: string
+): Promise<ClipTimestamp[]> {
+  // const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
   const prompt = `
     Analyze this YouTube video: ${youtubeUrl}
     
-    Please identify the 10 most engaging moments that would make great short-form clips for TikTok, Instagram Reels, and YouTube Shorts.
+    Identify the 10 most engaging moments for TikTok/Instagram Reels/YouTube Shorts.
     
-    For each clip, provide:
-    1. Start timestamp (in seconds)
-    2. End timestamp (in seconds)
-    3. Title/description of the moment
-    4. Why it's engaging (hook, value, emotion)
-    5. Viral score (0-100)
-    
-    Return the response as a JSON array with this structure:
+    Return ONLY a valid JSON array with this exact structure:
     [
       {
         "start": 45,
@@ -30,17 +34,17 @@ export async function analyzeVideoForClips(youtubeUrl: string) {
       }
     ]
     
-    Focus on:
-    - Strong hooks in the first 3 seconds
-    - Complete thoughts (don't cut mid-sentence)
-    - Emotional peaks or valuable insights
+    Requirements:
     - Clips between 15-60 seconds
+    - Strong hooks in first 3 seconds
+    - Complete thoughts (no mid-sentence cuts)
+    - Emotional peaks or valuable insights
   `;
 
   const result = await model.generateContent(prompt);
   const response = result.response.text();
 
-  // Parse JSON from response
+  // Extract JSON from response
   const jsonMatch = response.match(/\[[\s\S]*\]/);
   if (jsonMatch) {
     return JSON.parse(jsonMatch[0]);

@@ -10,16 +10,19 @@
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",
     "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@google/generative-ai": "^0.24.1",
+    "ffmpeg-static": "^5.2.0",
     "lucide-react": "^0.544.0",
     "next": "15.5.4",
+    "openai": "^6.0.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^20.19.19",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tailwindcss": "^4",

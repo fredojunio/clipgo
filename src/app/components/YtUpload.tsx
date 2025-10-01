@@ -73,7 +73,9 @@ export default function YouTubeUploadUI(): JSX.Element {
 
       if (data.success) {
         // Redirect to results page
-        router.push(`/results`);
+        console.log("Job ID:", data.jobId);
+        router.push(`/results/${data.jobId}`);
+        // router.push(`/results`);
       }
 
       setStatus("success");
