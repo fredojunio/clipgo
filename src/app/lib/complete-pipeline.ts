@@ -1,18 +1,19 @@
 import path from "path";
 import fs from "fs";
-import { analyzeVideoForClips } from "./gemini-analyzer";
+import { analyzeVideoForMontages, MontageClip } from "./gemini-analyzer";
 import { downloadYouTubeVideo } from "./yt-downloader";
 import {
-  cutVideoClip,
+  cutVideo,
+  combineVideos,
   cropToPortrait,
   extractAudio,
   embedCaptions,
   generateThumbnail,
-} from "./ffmpeg-processor";
+} from "./video-operations";
 import { transcribeAudio } from "./speech-to-text";
 import { generateSRT } from "./srt-generator";
 
-export interface ProcessedClip {
+export interface ProcessedMontage {
   id: number;
   title: string;
   videoPath: string;
@@ -20,16 +21,18 @@ export interface ProcessedClip {
   duration: string;
   viralScore: number;
   timestamp: string;
+  momentsCount: number;
 }
 
-export async function processYouTubeVideo(
+export async function processYouTubeVideoMontages(
   youtubeUrl: string,
-  jobId: string
-): Promise<ProcessedClip[]> {
+  jobId: string,
+  numberOfClips: number = 10
+): Promise<ProcessedMontage[]> {
   const workDir = path.join(process.cwd(), "public", "temp", jobId);
   fs.mkdirSync(workDir, { recursive: true });
 
-  console.log(`[${jobId}] Starting video processing...`);
+  console.log(`[${jobId}] Starting montage processing...`);
 
   try {
     // STEP 1: Download YouTube video
@@ -37,87 +40,110 @@ export async function processYouTubeVideo(
     const videoPath = await downloadYouTubeVideo(youtubeUrl, workDir);
     console.log(`[${jobId}] Video downloaded: ${videoPath}`);
 
-    // STEP 2: Analyze with Gemini AI to get timestamps
+    // STEP 2: Analyze with Gemini AI
     console.log(`[${jobId}] Analyzing video with AI...`);
-    const clips = await analyzeVideoForClips(youtubeUrl);
-    console.log(`[${jobId}] Found ${clips.length} clips`);
+    const montages = await analyzeVideoForMontages(youtubeUrl, numberOfClips);
+    console.log(`[${jobId}] Found ${montages.length} montage clips`);
 
-    // STEP 3: Process each clip
-    const processedClips: ProcessedClip[] = [];
+    // STEP 3: Process each montage
+    const processedMontages: ProcessedMontage[] = [];
 
-    for (let i = 0; i < clips.length; i++) {
-      const clip = clips[i];
+    for (let i = 0; i < montages.length; i++) {
+      const montage = montages[i];
       console.log(
-        `[${jobId}] Processing clip ${i + 1}/${clips.length}: ${clip.title}`
+        `[${jobId}] Processing montage ${i + 1}/${montages.length}: ${
+          montage.title
+        }`
       );
 
       try {
-        // 3a: Cut the clip
-        const cutPath = path.join(workDir, `clip-${i}-cut.mp4`);
-        await cutVideoClip(videoPath, cutPath, clip.start, clip.duration);
-        console.log(`[${jobId}]   - Cut complete`);
+        const montageWorkDir = path.join(workDir, `montage-${i}`);
+        fs.mkdirSync(montageWorkDir, { recursive: true });
 
-        // 3b: Crop to portrait (9:16)
-        const croppedPath = path.join(workDir, `clip-${i}-cropped.mp4`);
-        await cropToPortrait(cutPath, croppedPath);
-        console.log(`[${jobId}]   - Cropped to portrait`);
+        // Cut each moment
+        console.log(
+          `[${jobId}]   - Cutting ${montage.moments.length} moments...`
+        );
+        const momentPaths: string[] = [];
 
-        // 3c: Extract audio for transcription
-        const audioPath = path.join(workDir, `clip-${i}.mp3`);
+        for (let j = 0; j < montage.moments.length; j++) {
+          const moment = montage.moments[j];
+          const momentPath = path.join(montageWorkDir, `moment-${j}.mp4`);
+
+          console.log(
+            `[${jobId}]     - Cutting moment ${j + 1}: ${moment.start}s for ${
+              moment.duration
+            }s`
+          );
+          await cutVideo(videoPath, momentPath, moment.start, moment.duration);
+          momentPaths.push(momentPath);
+        }
+
+        // Combine moments
+        console.log(`[${jobId}]   - Combining moments...`);
+        const combinedPath = path.join(workDir, `montage-${i}-combined.mp4`);
+        await combineVideos(momentPaths, combinedPath, montageWorkDir);
+
+        // Crop to portrait
+        console.log(`[${jobId}]   - Cropping to portrait...`);
+        const croppedPath = path.join(workDir, `montage-${i}-cropped.mp4`);
+        await cropToPortrait(combinedPath, croppedPath);
+
+        // Extract audio
+        console.log(`[${jobId}]   - Extracting audio...`);
+        const audioPath = path.join(workDir, `montage-${i}.mp3`);
         await extractAudio(croppedPath, audioPath);
-        console.log(`[${jobId}]   - Audio extracted`);
 
-        // 3d: Transcribe audio with Whisper
+        // Transcribe
+        console.log(`[${jobId}]   - Transcribing...`);
         const transcription = await transcribeAudio(audioPath);
-        console.log(`[${jobId}]   - Transcription complete`);
 
-        // 3e: Generate SRT file
-        const srtPath = path.join(workDir, `clip-${i}.srt`);
+        // Generate SRT
+        console.log(`[${jobId}]   - Generating captions...`);
+        const srtPath = path.join(workDir, `montage-${i}.srt`);
         generateSRT(transcription, srtPath);
-        console.log(`[${jobId}]   - SRT generated`);
 
-        // 3f: Embed captions
-        const finalPath = path.join(workDir, `clip-${i}-final.mp4`);
+        // Embed captions
+        console.log(`[${jobId}]   - Embedding captions...`);
+        const finalPath = path.join(workDir, `montage-${i}-final.mp4`);
         await embedCaptions(croppedPath, srtPath, finalPath);
-        console.log(`[${jobId}]   - Captions embedded`);
 
-        // 3g: Generate thumbnail
-        const thumbnailPath = path.join(workDir, `clip-${i}-thumb.jpg`);
+        // Generate thumbnail
+        console.log(`[${jobId}]   - Generating thumbnail...`);
+        const thumbnailPath = path.join(workDir, `montage-${i}-thumb.jpg`);
         await generateThumbnail(finalPath, thumbnailPath);
-        console.log(`[${jobId}]   - Thumbnail generated`);
 
-        // Store result
-        processedClips.push({
+        processedMontages.push({
           id: i + 1,
-          title: clip.title,
-          videoPath: `/temp/${jobId}/clip-${i}-final.mp4`,
-          thumbnailPath: `/temp/${jobId}/clip-${i}-thumb.jpg`,
-          duration: formatDuration(clip.duration),
-          viralScore: clip.viralScore,
-          timestamp: formatTimestamp(clip.start),
+          title: montage.title,
+          videoPath: `/temp/${jobId}/montage-${i}-final.mp4`,
+          thumbnailPath: `/temp/${jobId}/montage-${i}-thumb.jpg`,
+          duration: formatDuration(montage.totalDuration),
+          viralScore: montage.viralScore,
+          timestamp: formatTimestamp(montage.moments[0].start),
+          momentsCount: montage.moments.length,
         });
 
-        // Cleanup intermediate files
-        fs.unlinkSync(cutPath);
+        // Cleanup
+        fs.rmSync(montageWorkDir, { recursive: true, force: true });
+        fs.unlinkSync(combinedPath);
         fs.unlinkSync(croppedPath);
         fs.unlinkSync(audioPath);
         fs.unlinkSync(srtPath);
 
-        console.log(`[${jobId}] Clip ${i + 1} complete!`);
+        console.log(`[${jobId}] Montage ${i + 1} complete!`);
       } catch (error) {
-        console.error(`[${jobId}] Failed to process clip ${i + 1}:`, error);
-        // Continue with next clip
+        console.error(`[${jobId}] Failed to process montage ${i + 1}:`, error);
       }
     }
 
-    // Cleanup original video
+    // Cleanup
     fs.unlinkSync(videoPath);
 
-    console.log(`[${jobId}] All clips processed successfully!`);
-    return processedClips;
+    console.log(`[${jobId}] All montages processed!`);
+    return processedMontages;
   } catch (error) {
     console.error(`[${jobId}] Pipeline error:`, error);
-    // Cleanup on error
     fs.rmSync(workDir, { recursive: true, force: true });
     throw error;
   }

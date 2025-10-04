@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { processYouTubeVideo } from "@/app/lib/complete-pipeline";
+import { processYouTubeVideoMontages } from "@/app/lib/complete-pipeline";
 
 export async function POST(request: NextRequest) {
   try {
-    const { url } = await request.json();
+    const { url, numberOfClips } = await request.json();
 
     if (!url) {
       return NextResponse.json(
@@ -12,17 +12,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate unique job ID
     const jobId = `job-${Date.now()}`;
+    const clipsCount = numberOfClips || 10;
 
-    console.log(`Starting job ${jobId} for URL: ${url}`);
+    console.log(`Starting montage job ${jobId} for URL: ${url}`);
 
-    // Process the video (this will take several minutes)
-    const clips = await processYouTubeVideo(url, jobId);
+    const clips = await processYouTubeVideoMontages(url, jobId, clipsCount);
 
     return NextResponse.json({
       success: true,
-      message: "Video processed successfully!",
+      message: `${clips.length} montage clips created successfully!`,
       jobId,
       clips,
     });
@@ -37,6 +36,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-// Optional: Add timeout configuration for long-running processes
-// export const maxDuration = 300; // 5 minutes (Vercel Pro required)
